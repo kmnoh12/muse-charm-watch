@@ -44,6 +44,9 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val runtime = runtime
+        // Debug: `adb shell am start ... --ez no_mfg true` advertises without the manufacturer data.
+        runtime.ble.includeManufacturerData = !intent.getBooleanExtra("no_mfg", false)
+        if (intent.getBooleanExtra("scan", false)) DebugScan.run(this)
         // Pairing and talking both need the watch awake: a dozing watch drops the Bluetooth link.
         window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 

@@ -55,6 +55,9 @@ class BlePeripheral(
         private const val DEFAULT_ATT_MTU = 23
     }
 
+    /** Debug knob: set false to advertise without the manufacturer data (to see what the phone app filters on). */
+    @Volatile var includeManufacturerData = true
+
     private val _state = MutableStateFlow(State.STOPPED)
     val state: StateFlow<State> = _state.asStateFlow()
 
@@ -134,7 +137,7 @@ class BlePeripheral(
         val data = AdvertiseData.Builder()
             .setIncludeDeviceName(false)
             .addServiceUuid(ParcelUuid(SERVICE_UUID))
-            .addManufacturerData(PAIRED_FLAG_COMPANY_ID, byteArrayOf(0))
+            .apply { if (includeManufacturerData) addManufacturerData(PAIRED_FLAG_COMPANY_ID, byteArrayOf(0)) }
             .build()
         // The local name (MuseGadgetXXXXXX, the adapter name) goes in the scan response to fit the 31-byte limit.
         val scanResponse = AdvertiseData.Builder().setIncludeDeviceName(true).build()

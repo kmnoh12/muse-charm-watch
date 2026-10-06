@@ -7,3 +7,4 @@ local.properties
 reference/
 *.apk
 assets/charm/_reference/
+local/

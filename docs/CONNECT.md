@@ -51,9 +51,21 @@ adb logcat -s MuseCharm MuseBle
 
 
 ## 실기기에서 확인된 것 (2026-10-06)
-- 갤럭시워치8(SM-L325N, Android 17)은 `MuseGadgetXXXXXX`로 BLE 광고하고, 블루투스 이름 변경도 된다.
-- 폰 뮤즈 앱(`com.facebook.aura` 9.0)이 워치를 찾아 연결하고, 암호화 페어링(`pairing_confirmed`)과 Wi-Fi 목록(`wifi_scan_result`)까지 정상 진행된다.
-- **막힌 곳:** 폰이 토큰을 보내는 `provision_v2`에서 폰 쪽 `IllegalArgumentException: value should not be longer than max length of an attribute value`
-  (`HatchDeviceBleManager.writeChunked`). 안드로이드 14+ 폰은 연결 즉시 MTU를 517로 협상하고(`onConfigureMTU(..., 517)`),
-  안드로이드 서버(워치)는 이를 낮출 수 없다. 앱이 그 크기로 512바이트를 넘는 조각을 쓰려다 실패한 것으로 보인다(조각 크기 계산은 로그로 추정).
-- **우회:** MTU가 작게 협상되는 기기로 페어링(아이폰/아이패드/안드로이드 13 이하 폰), 또는 맥을 BLE 기기로 써서 페어링.
+- 갤럭시워치8(SM-L325N, Android 17)은 `MuseGadgetXXXXXX`로 BLE 광고하고, 블루투스 이름 변경도 된다. 광고에서 제조사 데이터는 필수가 아니다.
+- 폰 뮤즈 앱(`com.facebook.aura` 9.0.0.23, 폰은 갤럭시 S25 Ultra, Android 17)이 워치를 찾아 연결하고, 암호화 페어링(`pairing_confirmed`)과
+  Wi-Fi 목록(`wifi_scan_result`)까지 정상 진행된다. Wi-Fi 이름은 실제 이름이든 `Use current connection`이든 상관없다.
+- **막힌 곳 (우리 쪽 문제가 아님):** 폰이 토큰을 보내는 `provision_v2`에서 폰 안에서 예외가 난다.
+  `IllegalArgumentException: value should not be longer than max length of an attribute value`
+  (`HatchDeviceBleManager.writeChunked` ← `writeEncryptedProvisionRecord`). 폰 쪽 로그가 `MTU changed: mtu=517`을 찍은 직후다.
+  **상대 기기가 안드로이드 워치든 맥(CoreBluetooth)이든 똑같이 517로 보고되고 똑같이 실패한다.** 안드로이드 14+ 폰은 연결 직후 MTU를 517로 올리고,
+  앱이 그 값으로 만든 조각이 안드로이드 한계(512바이트)를 넘는 것으로 보인다(조각 크기 계산은 로그로 추정). 폰 시스템에 이를 바꿀 설정은 없다.
+- 그래서 `provision_v2`가 워치에 한 번도 도착하지 않고, 토큰을 받을 수 없다.
+
+## 가능한 우회
+1. **다른 폰으로 페어링만 하기:** 안드로이드 13 이하 폰(또는 같은 앱의 더 새 버전)에 뮤즈 앱을 깔고 이 워치를 추가한다. 토큰은 워치에 저장되고, 끝나면 지금 폰을 써도 된다.
+2. **MTU를 낮게 협상하는 BLE 기기로 페어링:** 메타 레퍼런스(라즈베리파이+BlueZ, ESP32)는 설정으로 MTU를 제어할 수 있다.
+   페어링으로 받은 토큰을 워치 앱에 옮기면 된다(`tools/mac_pairing.py`가 같은 방식으로 토큰을 저장하는 예: Mac은 안 되지만 구조는 같다).
+3. 뮤즈 앱을 최신으로 업데이트해 본다(버그가 고쳐졌을 수 있다). 메타 빌더 Discord에 로그와 함께 보고한다.
+
+`tools/mac_pairing.py`, `tools/mac-pairing/*`는 맥을 BLE 기기로 쓰려던 시도다(macOS는 서비스 UUID와 이름을 동시에 광고하지 못하고,
+위 MTU 문제는 그대로라 막혔다). 다른 BLE 기기 구현의 참고용으로 남긴다.
