@@ -36,11 +36,17 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import muse.charm.conversation.CharmState
 
-/** The Jollybot preview animation, cut into frames (see tools/extract_jolly_frames.py). */
-class JollySprites(val frames: List<ImageBitmap>) {
+/**
+ * The Jollybot animation at its native size: 75 frames of 56x59 pixels in one 16 KB sprite sheet
+ * (see tools/extract_jolly_native.py), drawn enlarged with nearest-neighbour scaling.
+ */
+class JollySprites(val sheet: ImageBitmap) {
     companion object {
         const val FRAME_MS = 40L
         const val FRAME_COUNT = 75
+        const val FRAME_W = 56
+        const val FRAME_H = 59
+        private const val COLUMNS = 15
 
         /** Arms up and hearts: used while speaking. */
         val HAPPY: List<Int> = (13..49).toList()
@@ -50,22 +56,22 @@ class JollySprites(val frames: List<ImageBitmap>) {
 
         suspend fun load(context: Context): JollySprites? = withContext(Dispatchers.IO) {
             try {
-                val frames = (0 until FRAME_COUNT).map { i ->
-                    context.assets.open("jolly/jolly_%03d.png".format(i)).use { BitmapFactory.decodeStream(it).asImageBitmap() }
-                }
-                JollySprites(frames)
+                val bitmap = context.assets.open("jolly/jolly_sheet.png").use { BitmapFactory.decodeStream(it) }
+                JollySprites(bitmap.asImageBitmap())
             } catch (e: Exception) {
                 null
             }
         }
     }
 
-    /** The frame to show [sinceStateMs] after the state began. Speaking starts at the arms-up frame. */
-    fun frameFor(state: CharmState, sinceStateMs: Long): ImageBitmap {
+    /** The frame index to show [sinceStateMs] after the state began. Speaking starts at the arms-up frame. */
+    fun frameIndexFor(state: CharmState, sinceStateMs: Long): Int {
         val step = (sinceStateMs / FRAME_MS).toInt()
         val loop = if (state == CharmState.SPEAKING) HAPPY else CALM
-        return frames[loop[step % loop.size]]
+        return loop[step % loop.size]
     }
+
+    fun sourceOffset(frame: Int) = IntOffset((frame % COLUMNS) * FRAME_W, (frame / COLUMNS) * FRAME_H)
 }
 
 private val Accent = Color(0xFFB9A6FF)
@@ -89,16 +95,18 @@ fun JollyScreen(
     }
     LaunchedEffect(state) { stateStart = now }
 
-    val frame = sprites.frameFor(state, (now - stateStart).coerceAtLeast(0))
+    val frame = sprites.frameIndexFor(state, (now - stateStart).coerceAtLeast(0))
     Box(modifier.fillMaxSize().background(Color.Black)) {
         Canvas(Modifier.fillMaxSize()) {
             val s = min(size.width, size.height)
-            val target = s * 0.86f
-            val scale = target / frame.width
-            val w = (frame.width * scale).toInt()
-            val h = (frame.height * scale).toInt()
+            // Whole-pixel scale keeps every art pixel the same size on screen.
+            val scale = maxOf(1, (s * 0.88f / JollySprites.FRAME_H).toInt())
+            val w = JollySprites.FRAME_W * scale
+            val h = JollySprites.FRAME_H * scale
             drawImage(
-                frame,
+                sprites.sheet,
+                srcOffset = sprites.sourceOffset(frame),
+                srcSize = IntSize(JollySprites.FRAME_W, JollySprites.FRAME_H),
                 dstOffset = IntOffset(((size.width - w) / 2).toInt(), ((size.height - h) / 2 - 0.02f * s).toInt()),
                 dstSize = IntSize(w, h),
                 filterQuality = FilterQuality.None, // keep the pixels crisp
