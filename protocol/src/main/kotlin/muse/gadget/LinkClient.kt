@@ -14,6 +14,9 @@ import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
@@ -211,6 +214,11 @@ class LinkSession(
 
     val isRegistered: Boolean get() = registeredAtNanos != null
 
+    private val _registered = MutableStateFlow(false)
+
+    /** True once the VM accepted `link.register`; the session is usable from then on. */
+    val registered: StateFlow<Boolean> = _registered.asStateFlow()
+
     /** Runs the session until it ends or [stop] completes. */
     suspend fun run(stop: CompletableDeferred<Unit>): Outcome {
         ws = try {
@@ -384,7 +392,10 @@ class LinkSession(
 
     private fun handle(message: JSONObject, scope: CoroutineScope): Outcome? {
         if (message.optString("id") == registerId && !message.has("method")) {
-            if (!message.has("error") || message.isNull("error")) registeredAtNanos = System.nanoTime()
+            if (!message.has("error") || message.isNull("error")) {
+                registeredAtNanos = System.nanoTime()
+                _registered.value = true
+            }
             return null
         }
         val event = message.optString("event")
