@@ -44,7 +44,8 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val runtime = runtime
-        val controller = runtime.controller
+        // Pairing and talking both need the watch awake: a dozing watch drops the Bluetooth link.
+        window.addFlags(android.view.WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
 
         setContent {
             MaterialTheme {
