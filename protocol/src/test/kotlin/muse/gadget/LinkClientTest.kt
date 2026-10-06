@@ -273,4 +273,75 @@ class LinkClientTest {
         val enc = encodeMessage(JSONObject("""{"k":"v"}"""))
         assertContentEquals(byteArrayOf(9, 0, 0, 0), enc.copyOfRange(0, 4))
     }
+    @Test
+    fun subscribeStreamsReplyEventsAsNdjson() = test {
+        val r = rig()
+        launch { r.session.run(CompletableDeferred()) }
+        r.vm.handshake(); r.vm.acceptControlStream(); r.vm.nextMessage()
+
+        val events = CompletableDeferred<List<JSONObject>>()
+        launch {
+            val flow = r.session.subscribe()
+            val got = mutableListOf<JSONObject>()
+            flow.collect { got += it; if (got.size == 3) events.complete(got) }
+        }
+        val start = r.vm.nextFrame()
+        val app = (start.body as FrameBody.Request).value
+        assertEquals(Triple("POST", "/chat/subscribe", false), Triple(app.verb, app.path, app.endBody))
+        val headers = app.headers.associate { it.key.lowercase() to it.value }
+        assertEquals("application/x-ndjson", headers["accept"])
+        assertEquals("hatch-web", headers["x-app-id"])
+        val body = r.vm.nextFrame().body as FrameBody.Chunk
+        assertEquals("{}", String(body.value.data))
+        assertTrue(body.value.endBody)
+
+        // The VM streams lines; one of them is split across two frames.
+        val l1 = """{"type":"subscribed"}""" + "\n"
+        val l2 = """{"type":"event","seq":1,"event":"delta.text_append","payload":{"message_id":"m1","text":"Hi"}}""" + "\n"
+        val l3 = """{"type":"event","seq":2,"event":"delta.message_done","payload":{"message_id":"m1"}}""" + "\n"
+        r.vm.sendFrame(ServiceFrame(start.streamId, FrameBody.Response(ApplicationResponse(200, body = (l1 + l2.take(30)).toByteArray()))))
+        r.vm.sendFrame(ServiceFrame(start.streamId, FrameBody.Chunk(BodyChunk((l2.drop(30) + l3).toByteArray()))))
+        val got = events.await()
+        assertEquals("subscribed", got[0].getString("type"))
+        assertEquals("delta.text_append", got[1].getString("event"))
+        assertEquals("delta.message_done", got[2].getString("event"))
+    }
+
+    @Test
+    fun aVoiceNoteIsUploadedAsAStreamingJsonBody() = test {
+        val r = rig()
+        launch { r.session.run(CompletableDeferred()) }
+        r.vm.handshake(); r.vm.acceptControlStream(); r.vm.nextMessage()
+
+        val pcm = ByteArray(4801) { (it * 5).toByte() }
+        val uploaded = CompletableDeferred<OutboundStream>()
+        launch {
+            val note = r.session.openStreamRequest("POST", "/chat/stream")
+            val body = muse.gadget.chat.VoiceNoteBody()
+            note.write(body.append(pcm.copyOfRange(0, 2000)))
+            note.write(body.append(pcm.copyOfRange(2000, pcm.size)))
+            note.write(body.finish(), last = true)
+            uploaded.complete(note)
+        }
+        val start = r.vm.nextFrame()
+        val app = (start.body as FrameBody.Request).value
+        assertEquals(Triple("POST", "/chat/stream", false), Triple(app.verb, app.path, app.endBody))
+        assertEquals("hatch-web", app.headers.associate { it.key.lowercase() to it.value }["x-app-id"])
+        val received = java.io.ByteArrayOutputStream()
+        while (true) {
+            val chunk = (r.vm.nextFrame().body as FrameBody.Chunk).value
+            received.write(chunk.data)
+            if (chunk.endBody) break
+        }
+        val json = JSONObject(String(received.toByteArray()))
+        val audio = java.util.Base64.getDecoder().decode(json.getJSONArray("items").getJSONObject(0).getString("data_base64"))
+        assertContentEquals(muse.gadget.chat.VoiceNote.wavHeader() + pcm, audio)
+
+        // The VM acknowledges the note with the user message's id.
+        r.vm.sendFrame(ServiceFrame(start.streamId, FrameBody.Response(ApplicationResponse(200, body = """{"result":{"message_id":"u1"}}""".toByteArray(), endBody = true))))
+        val note = uploaded.await()
+        assertEquals(200, note.response.status())
+        val ack = muse.gadget.chat.parseChatAck(String(note.response.chunks.receive()))
+        assertEquals("u1", ack?.messageId)
+    }
 }

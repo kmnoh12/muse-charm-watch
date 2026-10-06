@@ -13,6 +13,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.async
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.channels.Channel
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.selects.select
 import kotlinx.coroutines.sync.Mutex
@@ -24,6 +26,7 @@ import muse.gadget.noise.DecryptedFrame
 import muse.gadget.noise.FrameBody
 import muse.gadget.noise.Header
 import muse.gadget.noise.NoiseTransport
+import muse.gadget.chat.NdjsonDecoder
 import muse.gadget.noise.NoiseXXInitiator
 import org.json.JSONException
 import org.json.JSONObject
@@ -41,6 +44,10 @@ const val NOISE_PATH = "/v1/noise"
 const val CONTROL_PATH = "/link-control"
 const val CHAT_PATH = "/chat/stream"
 const val APP_ID = "musegadget"
+
+/** The app id Meta's firmware sends on voice/chat turns that ride the Link session. */
+const val VOICE_APP_ID = "hatch-web"
+const val SUBSCRIBE_PATH = "/chat/subscribe"
 const val REQUEST_TIMEOUT_MS = 60_000L
 const val MAX_RESPONSE_BYTES = 1024 * 1024
 const val HANDSHAKE_TIMEOUT_MS = 20_000L
@@ -167,6 +174,20 @@ class ChatStream internal constructor() {
     }
 }
 
+/** A request whose body is written piece by piece (a voice note, the subscription). */
+class OutboundStream internal constructor(
+    private val session: LinkSession,
+    val streamId: Long,
+    /** The server's answer to this request. */
+    val response: ChatStream,
+) {
+    /** Sends [data]; the last write of the body passes [last] = true. */
+    suspend fun write(data: ByteArray, last: Boolean = false) = session.writeBody(streamId, data, last)
+
+    /** Abandons the request. */
+    suspend fun cancel() = session.cancelRequest(streamId)
+}
+
 class LinkSession(
     private val noiseHost: String,
     private val vmId: String,
@@ -277,6 +298,57 @@ class LinkSession(
         val text = String(bytes, Charsets.UTF_8)
         val decoded: Any? = if (text.isEmpty()) JSONObject.NULL else try { JSONObject(text) } catch (e: JSONException) { text.take(2000) }
         return JSONObject().put("ok", status in 200..299).put("status", status).put("response", decoded)
+    }
+
+    /**
+     * Opens a request whose body is sent with [OutboundStream.write]. [appId] defaults to the one the
+     * firmware uses for voice turns on the Link session.
+     */
+    suspend fun openStreamRequest(
+        method: String,
+        path: String,
+        contentType: String? = "application/json",
+        accept: String? = null,
+        appId: String = VOICE_APP_ID,
+    ): OutboundStream {
+        val headers = buildList {
+            add(Header("x-request-id", UUID.randomUUID().toString()))
+            add(Header("x-app-id", appId))
+            if (contentType != null) add(Header("Content-Type", contentType))
+            if (accept != null) add(Header("accept", accept))
+        }
+        val encrypted = transport.startStreamRequest(method, path, headers = headers)
+        val stream = ChatStream()
+        requests[encrypted.streamId] = stream
+        try {
+            sendFrames(encrypted.frames)
+        } catch (e: Exception) {
+            requests.remove(encrypted.streamId)
+            throw e
+        }
+        return OutboundStream(this, encrypted.streamId, stream)
+    }
+
+    internal suspend fun writeBody(streamId: Long, data: ByteArray, last: Boolean) =
+        sendFrames(transport.encryptBodyChunk(streamId, data, endBody = last))
+
+    internal suspend fun cancelRequest(streamId: Long) {
+        requests.remove(streamId)?.fail(java.io.IOException("cancelled"))
+        sendFrames(transport.encryptReset(streamId))
+    }
+
+    /**
+     * Subscribes to chat events (`POST /chat/subscribe`): replies, live. The returned flow emits one
+     * JSON object per NDJSON line, starting with the subscription ack, and completes when the VM ends
+     * the stream or the session closes. Collect it once per session.
+     */
+    suspend fun subscribe(): Flow<JSONObject> {
+        val request = openStreamRequest("POST", SUBSCRIBE_PATH, accept = "application/x-ndjson")
+        request.write("{}".toByteArray(), last = true)
+        return flow {
+            val decoder = NdjsonDecoder()
+            for (chunk in request.response.chunks) decoder.feed(chunk).forEach { emit(it) }
+        }
     }
 
     private suspend fun readLoop(scope: CoroutineScope): Outcome {

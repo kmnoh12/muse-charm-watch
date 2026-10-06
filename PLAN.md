@@ -46,8 +46,8 @@ SDK 조사 메모: [NOTES.md](NOTES.md)
 
 ## 5. 음성
 
-- **STT (입력)**: 뮤즈 채팅이 텍스트 입력이라 워치에서 텍스트로 바꿔야 한다. 후보: Wear OS의 SpeechRecognizer/RecognizerIntent, 오프라인 모델(예: Vosk 등). 한국어 지원과 갤럭시워치8에서의 동작은 **미검증**(옵시디언 노트에도 "SpeechRecognizer 미검증"으로 적혀 있음).
-- **TTS (출력)**: 워치 내장 `android.speech.tts`. 오프라인, 무료. 응답 청크가 오는 대로 문장 단위로 끊어 읽는 스트리밍 방식이 실시간 대화 느낌의 핵심이다.
+- **STT (입력): 워치에서 하지 않는다 (2026-10-06 변경).** 메타의 ESP32 레퍼런스가 음성 노트(16kHz WAV를 base64로 `POST /chat/stream`)를 올리면 **서버(VM)가 텍스트로 바꿔준다**. 워치는 `AudioRecord`로 녹음해서 올리기만 하면 된다. 한국어 인식 품질은 서버 몫이고 미검증. 자세한 프로토콜은 NOTES.md의 Voice protocol 참고.
+- **TTS (출력)**: 워치 내장 `android.speech.tts`. 메타 레퍼런스도 "뮤즈는 기기 응답을 말해주지 않는다"고 해서 기기 몫이 맞다. 응답은 `POST /chat/subscribe` 스트림의 `delta.text_append` 이벤트로 오므로, 문장이 완성되는 대로 끊어 읽는 스트리밍 방식이 가능하다.
 - 클라우드 TTS(ElevenLabs 등)는 v2에서 음질이 아쉬울 때만.
 
 ## 6. 비주얼 (캐릭터)
