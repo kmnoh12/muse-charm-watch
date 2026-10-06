@@ -36,6 +36,7 @@ import kotlin.math.min
 import kotlin.math.sin
 import kotlinx.coroutines.delay
 import kotlin.random.Random
+import muse.charm.conversation.CharmState
 
 private val Ink = Color(0xFF1B1530)
 private val BodyLight = Color(0xFFD9CEFF)
@@ -56,6 +57,7 @@ fun CharmScreen(
     state: CharmState,
     modifier: Modifier = Modifier,
     mouthLevel: Float? = null,
+    caption: String? = null,
     showLabel: Boolean = true,
 ) {
     val clock = rememberInfiniteTransition(label = "clock")
@@ -92,7 +94,7 @@ fun CharmScreen(
         }
         if (showLabel) {
             Text(
-                text = state.label,
+                text = caption ?: state.label,
                 color = Color.White.copy(alpha = 0.55f),
                 fontSize = 11.sp,
                 modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 20.dp),

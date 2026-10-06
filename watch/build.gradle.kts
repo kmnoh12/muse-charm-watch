@@ -26,6 +26,8 @@ android {
 
 dependencies {
     implementation(project(":protocol"))
+    implementation(project(":conversation"))
+    implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.9.0")
     implementation(platform("androidx.compose:compose-bom:2024.12.01"))
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.foundation:foundation")
