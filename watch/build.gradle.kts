@@ -1,7 +1,13 @@
+import java.util.Properties
+
 plugins {
     id("com.android.application")
     kotlin("android")
     id("org.jetbrains.kotlin.plugin.compose")
+}
+
+val localProps = Properties().apply {
+    rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
 }
 
 android {
@@ -13,7 +19,10 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
-    buildFeatures { compose = true }
+    buildFeatures {
+        compose = true
+        buildConfig = true
+    }
 
     defaultConfig {
         applicationId = "dev.kyungmin.musecharm"
@@ -21,6 +30,8 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
+        // Personal SDK token from gadgets.muse.ai; set `muse.sdk.token=...` in local.properties (not committed).
+        buildConfigField("String", "MUSE_SDK_TOKEN", "\"${localProps.getProperty("muse.sdk.token", "")}\"")
     }
 }
 
@@ -35,5 +46,6 @@ dependencies {
     implementation("androidx.wear.compose:compose-foundation:1.4.1")
     implementation("androidx.activity:activity-compose:1.9.3")
     implementation("androidx.core:core-ktx:1.16.0")
+    implementation("com.squareup.okhttp3:okhttp:4.12.0")
     debugImplementation("androidx.compose.ui:ui-tooling")
 }
