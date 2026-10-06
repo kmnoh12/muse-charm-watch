@@ -13,11 +13,13 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.produceState
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.core.content.ContextCompat
+import androidx.compose.ui.platform.LocalContext
 import androidx.wear.compose.material.MaterialTheme
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -61,7 +63,12 @@ class MainActivity : ComponentActivity() {
                         })
                     },
                 ) {
-                    CharmScreen(state, caption = if (micDenied) "마이크 권한이 필요해요" else error)
+                        val caption = if (micDenied) "마이크 권한이 필요해요" else error
+                    // The Jollybot frames when they load; the drawn charm is the fallback.
+                    val context = LocalContext.current
+                    val sprites by produceState<JollySprites?>(null) { value = JollySprites.load(context) }
+                    val loaded = sprites
+                    if (loaded != null) JollyScreen(state, loaded, caption = caption) else CharmScreen(state, caption = caption)
                 }
             }
         }
