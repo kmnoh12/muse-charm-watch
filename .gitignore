@@ -1,1 +1,8 @@
+build/
+.gradle/
+.kotlin/
+.idea/
+local.properties
+*.class
 reference/
+*.apk
