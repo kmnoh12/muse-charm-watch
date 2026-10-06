@@ -15,4 +15,4 @@ dependencyResolutionManagement {
 }
 
 rootProject.name = "muse-charm-watch"
-include(":protocol", ":watch")
+include(":protocol", ":conversation", ":watch")
