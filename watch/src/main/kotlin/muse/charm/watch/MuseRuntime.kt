@@ -5,6 +5,7 @@ import android.os.BatteryManager
 import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
+import android.util.Log
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -50,6 +51,7 @@ class MuseRuntime(private val app: Application) {
 
     val service = GadgetService(
         identity = identity, store = store, device = device, connector = OkHttpConnector(), sdkToken = sdkToken,
+        log = { Log.i("MuseCharm", it) },
         runCommand = { command, _, _ -> if (command == "device.health") health() else unsupportedCommand(command) },
     )
 
@@ -65,7 +67,8 @@ class MuseRuntime(private val app: Application) {
     init {
         setup = SetupController(
             pairing = pairing, identity = identity, version = BuildConfig.VERSION_NAME,
-            transport = ble, network = AndroidNetwork(app), provision = VerifyAndSave(store),
+            transport = ble, network = AndroidNetwork(app), provision = VerifyAndSave(store, log = { Log.i("MuseSetup", it) }),
+            log = { Log.i("MuseSetup", it) },
             onComplete = {
                 main.post { service.pairingChanged() }
                 main.postDelayed({ ble.stop() }, 1_500) // let the phone receive the final status first

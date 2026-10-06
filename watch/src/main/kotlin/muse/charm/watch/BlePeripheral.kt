@@ -70,6 +70,7 @@ class BlePeripheral(
     @Volatile private var subscribed = false
     @Volatile private var mtu = DEFAULT_ATT_MTU
     private val notifyDone = Semaphore(0)
+    private val longWrite = java.io.ByteArrayOutputStream()
     private var originalName: String? = null
     private var advertising = false
 
@@ -159,6 +160,7 @@ class BlePeripheral(
         }
 
         override fun onConnectionStateChange(device: BluetoothDevice, status: Int, newState: Int) {
+            Log.i(TAG, "connection state=$newState status=$status")
             if (newState == android.bluetooth.BluetoothProfile.STATE_CONNECTED) {
                 client = device
                 _state.value = State.CONNECTED
@@ -176,6 +178,7 @@ class BlePeripheral(
         }
 
         override fun onMtuChanged(device: BluetoothDevice, mtu: Int) {
+            Log.i(TAG, "mtu=$mtu")
             this@BlePeripheral.mtu = mtu
         }
 
@@ -184,8 +187,24 @@ class BlePeripheral(
             preparedWrite: Boolean, responseNeeded: Boolean, offset: Int, value: ByteArray?,
         ) {
             val bytes = value ?: ByteArray(0)
-            if (characteristic.uuid == RX_UUID) onWrite(bytes.copyOf())
+            val chunk = if (bytes.size >= 3 && (bytes[0].toInt() and 0xFF) == 0xFE) " chunk ${bytes[1].toInt() and 0xFF}/${bytes[2].toInt() and 0xFF}" else ""
+            Log.i(TAG, "write ${bytes.size}B$chunk prepared=$preparedWrite offset=$offset response=$responseNeeded")
+            if (characteristic.uuid == RX_UUID) {
+                if (preparedWrite) {
+                    // A long write arrives in pieces; the whole message is delivered on onExecuteWrite.
+                    synchronized(longWrite) { longWrite.write(bytes) }
+                } else {
+                    onWrite(bytes.copyOf())
+                }
+            }
             if (responseNeeded) server?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, offset, bytes)
+        }
+
+        override fun onExecuteWrite(device: BluetoothDevice, requestId: Int, execute: Boolean) {
+            val whole = synchronized(longWrite) { longWrite.toByteArray().also { longWrite.reset() } }
+            Log.i(TAG, "execute write execute=$execute ${whole.size}B")
+            if (execute && whole.isNotEmpty()) onWrite(whole)
+            server?.sendResponse(device, requestId, BluetoothGatt.GATT_SUCCESS, 0, null)
         }
 
         override fun onCharacteristicReadRequest(device: BluetoothDevice, requestId: Int, offset: Int, characteristic: BluetoothGattCharacteristic) {

@@ -53,13 +53,15 @@ class MainActivity : ComponentActivity() {
                 val bleState by runtime.ble.state.collectAsState()
                 val serviceStatus by runtime.serviceStatus.collectAsState()
 
-                val askBluetooth = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) { grants ->
-                    if (grants.values.all { it }) runtime.startPairing()
+                val bluetoothPermissions = if (Build.VERSION.SDK_INT >= 31) listOf(Manifest.permission.BLUETOOTH_ADVERTISE, Manifest.permission.BLUETOOTH_CONNECT) else emptyList()
+                val askPermissions = rememberLauncherForActivityResult(ActivityResultContracts.RequestMultiplePermissions()) {
+                    // Location is optional (it only lets us tell the phone the Wi-Fi name); Bluetooth is not.
+                    if (bluetoothPermissions.all { has(it) }) runtime.startPairing()
                 }
                 fun beginPairing() {
                     screen = Screen.PAIRING
-                    val needed = if (Build.VERSION.SDK_INT >= 31) arrayOf(Manifest.permission.BLUETOOTH_ADVERTISE, Manifest.permission.BLUETOOTH_CONNECT) else emptyArray()
-                    if (needed.all { has(it) }) runtime.startPairing() else askBluetooth.launch(needed)
+                    val needed = bluetoothPermissions + Manifest.permission.ACCESS_FINE_LOCATION
+                    if (needed.all { has(it) }) runtime.startPairing() else askPermissions.launch(needed.toTypedArray())
                 }
 
                 when (screen) {

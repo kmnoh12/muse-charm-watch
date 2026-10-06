@@ -48,3 +48,12 @@ adb logcat -s MuseCharm MuseBle
 - 뮤즈 앱이 워치를 `MuseGadget` 기기로 인식하는지
 - 서버가 워치를 기기로 받아주는지(등록 때 종류를 `linux`/`homehub`로 알린다. SDK와 같은 값)
 - 음성 노트·응답 구독이 SDK 토큰 기기에서 되는지(메타 펌웨어는 같은 방식)
+
+
+## 실기기에서 확인된 것 (2026-10-06)
+- 갤럭시워치8(SM-L325N, Android 17)은 `MuseGadgetXXXXXX`로 BLE 광고하고, 블루투스 이름 변경도 된다.
+- 폰 뮤즈 앱(`com.facebook.aura` 9.0)이 워치를 찾아 연결하고, 암호화 페어링(`pairing_confirmed`)과 Wi-Fi 목록(`wifi_scan_result`)까지 정상 진행된다.
+- **막힌 곳:** 폰이 토큰을 보내는 `provision_v2`에서 폰 쪽 `IllegalArgumentException: value should not be longer than max length of an attribute value`
+  (`HatchDeviceBleManager.writeChunked`). 안드로이드 14+ 폰은 연결 즉시 MTU를 517로 협상하고(`onConfigureMTU(..., 517)`),
+  안드로이드 서버(워치)는 이를 낮출 수 없다. 앱이 그 크기로 512바이트를 넘는 조각을 쓰려다 실패한 것으로 보인다(조각 크기 계산은 로그로 추정).
+- **우회:** MTU가 작게 협상되는 기기로 페어링(아이폰/아이패드/안드로이드 13 이하 폰), 또는 맥을 BLE 기기로 써서 페어링.

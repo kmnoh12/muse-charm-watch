@@ -16,5 +16,6 @@ fi
 "$ADB" shell pm grant dev.kyungmin.musecharm android.permission.RECORD_AUDIO 2>/dev/null || true
 "$ADB" shell pm grant dev.kyungmin.musecharm android.permission.BLUETOOTH_ADVERTISE 2>/dev/null || true
 "$ADB" shell pm grant dev.kyungmin.musecharm android.permission.BLUETOOTH_CONNECT 2>/dev/null || true
+"$ADB" shell pm grant dev.kyungmin.musecharm android.permission.ACCESS_FINE_LOCATION 2>/dev/null || true
 "$ADB" shell am start -n dev.kyungmin.musecharm/muse.charm.watch.MainActivity >/dev/null
 echo "Installed and started. Watch the log with:  $ADB logcat -s MuseCharm MuseBle"

@@ -71,11 +71,14 @@ class VerifyAndSave(
     private val http: HttpTransport = UrlConnectionTransport,
     private val nowSeconds: () -> Long = { System.currentTimeMillis() / 1000 },
     private val userAgent: String = DEFAULT_USER_AGENT,
+    private val log: (String) -> Unit = {},
 ) : ProvisionStep {
     override fun run(credentials: Credentials, commit: (save: () -> Boolean) -> Boolean) {
         val apiUrl = credentials.apiUrl.takeIf { it.startsWith("https://") } ?: ""
         val apiUrlV2 = credentials.apiUrlV2.takeIf { it.startsWith("https://") } ?: ""
-        val (vms, _) = fetchVmsWithStatus(credentials.accessToken, apiRoot(apiUrlV2), http, userAgent)
+        val root = apiRoot(apiUrlV2)
+        val (vms, status) = fetchVmsWithStatus(credentials.accessToken, root, http, userAgent)
+        log("verify: GET $root$FETCH_PATH -> status=$status, ${vms.size} VM(s)")
         if (vms.isEmpty()) throw ProvisionFailed("auth_failed")
         val record = PairingRecord(
             credentials.accessToken, credentials.refreshToken, credentials.username, apiUrl, apiUrlV2,
@@ -127,6 +130,7 @@ class GadgetService(
     private val delayScale: Double = 1.0,
     /** Told the length of every wait before it starts (tests record it). */
     private val pauseHook: ((Double) -> Unit)? = null,
+    private val log: (String) -> Unit = {},
 ) {
     private val _status = MutableStateFlow(ServiceStatus.NOT_PAIRED)
     val status: StateFlow<ServiceStatus> = _status.asStateFlow()
@@ -174,7 +178,9 @@ class GadgetService(
                 continue
             }
 
+            log("connecting to VM ${vm.vmName.ifEmpty { vm.vmId }} via ${pairing.noiseHost.ifEmpty { DEFAULT_NOISE_HOST }}")
             val (outcome, lasted) = runSession(vm, pairing)
+            log("session ended: $outcome after ${"%.0f".format(lasted)}s")
             _session.value = null
             _status.value = ServiceStatus.CONNECTING
             if (outcome == Outcome.STOPPED) return
@@ -219,6 +225,7 @@ class GadgetService(
         } catch (e: CancellationException) {
             throw e
         } catch (e: Exception) {
+            log("session failed: ${e::class.simpleName}: ${e.message}")
             Outcome.CLOSED
         }
         val lasted = if (session.isRegistered) monotonicSeconds() - started else 0.0

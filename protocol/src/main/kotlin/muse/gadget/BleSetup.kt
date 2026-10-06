@@ -67,6 +67,8 @@ class SetupController(
     /** Handles messages one at a time in arrival order; tests pass a same-thread executor. */
     private val messageExecutor: Executor = Executors.newSingleThreadExecutor { r -> Thread(r, "ble-setup").also { it.isDaemon = true } },
     private val provisionExecutor: Executor = Executor { r -> Thread(r, "provision").also { it.isDaemon = true }.start() },
+    /** Progress lines (action names and statuses, never credentials). */
+    private val log: (String) -> Unit = {},
 ) {
     private val assembler = ChunkAssembler()
     private val txLock = Any()
@@ -93,11 +95,13 @@ class SetupController(
         val command = try {
             JSONObject(String(raw, Charsets.UTF_8))
         } catch (e: JSONException) {
+            log("RX invalid command JSON (${raw.size} bytes)")
             sendStatus("error_invalid_command")
             return
         }
         val action = command.optString("action", "")
         val blocked = synchronized(stateLock) { plaintextBlocked }
+        log("RX ${if (decrypted) "(encrypted) " else ""}action=${action.ifEmpty { "?" }}")
 
         when {
             !decrypted && action == "pairing_client_hello" -> handleHello(command)
@@ -207,7 +211,14 @@ class SetupController(
             try {
                 provision.run(credentials) { save -> pairing.commitProvisioning(generation, save) }
             } catch (e: ProvisionFailed) {
+                log("provision failed: ${e.status}")
                 sendStatus(e.status, generation)
+                transport.disconnect(500)
+                return
+            } catch (e: Exception) {
+                // Anything else must still reach the phone, or its setup screen waits forever.
+                log("provision crashed: ${e::class.simpleName}: ${e.message}")
+                sendStatus("auth_failed", generation)
                 transport.disconnect(500)
                 return
             }
@@ -223,18 +234,27 @@ class SetupController(
     fun sendStatus(status: String, generation: Long = 0L) = synchronized(txLock) {
         val envelope = pairing.encryptStatus(status, generation)
         if (envelope != null) {
+            log("TX status $status (encrypted #${envelope.optString("counter")})")
             sendLocked(envelope.toString())
             return@synchronized
         }
         val blocked = synchronized(stateLock) { plaintextBlocked }
-        if (generation != 0L || blocked || status !in PLAINTEXT_STATUSES) return@synchronized
+        if (generation != 0L || blocked || status !in PLAINTEXT_STATUSES) {
+            log("TX status $status suppressed")
+            return@synchronized
+        }
+        log("TX status $status")
         transport.sendPackets(listOf(status.toByteArray()))
     }
 
-    fun sendJson(obj: JSONObject) = synchronized(txLock) { sendLocked(obj.toString()) }
+    fun sendJson(obj: JSONObject) = synchronized(txLock) {
+        log("TX ${obj.optString("type")}")
+        sendLocked(obj.toString())
+    }
 
     fun sendEncryptedJson(obj: JSONObject, generation: Long = 0L) = synchronized(txLock) {
         val envelope = pairing.encryptJson(obj.toString(), generation) ?: return@synchronized
+        log("TX ${obj.optString("type")} (encrypted #${envelope.optString("counter")})")
         sendLocked(envelope.toString())
     }
 
