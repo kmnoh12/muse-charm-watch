@@ -1,0 +1,15 @@
+muse-gadget-protocol (Kotlin)
+
+This module is a Kotlin port of the Linux Device SDK from Meta's open-source
+Muse Gadgets project, https://github.com/facebookincubator/muse-gadget-sdk
+(linux/src/musegadget), Copyright (c) Meta Platforms, Inc. and affiliates,
+licensed under the Apache License, Version 2.0 (see LICENSE).
+
+Derived files: everything under src/main/kotlin. Test vectors in
+src/test/resources/link_pairing_v5.json are copied unchanged from the upstream
+repository (public synthetic data). noise_vectors.json is generated from the
+upstream Python code by tools/gen_noise_vectors.py.
+
+This is an unofficial personal project. It is not made by, endorsed by, or
+affiliated with Meta. Use of the Muse Gadget SDK token is subject to the Gadget
+SDK Terms (personal, non-commercial use).
